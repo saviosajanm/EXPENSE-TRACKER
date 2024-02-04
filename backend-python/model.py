@@ -2,14 +2,13 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler, LabelEncoder
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Flatten, Reshape
+from tensorflow.keras.layers import Bidirectional, LSTM, Dense, Dropout, Conv1D, Flatten, Reshape, GRU
 from keras.optimizers import Adam
 from keras.losses import MeanSquaredError
 from decouple import config
 from mongoengine import connect
 from pymongo.errors import ConnectionFailure
-from datetime import timedelta
-import matplotlib.pyplot as plt
+import pickle
 
 from controllers.expense import getExpense
 from controllers.income import getIncomes
@@ -141,6 +140,51 @@ def gan(n_steps, n_features):
 
     return gan_model
 
+def bilstm(n_steps, n_features):
+    model = Sequential()
+    model.add(Bidirectional(LSTM(50, activation="relu"), input_shape=(n_steps, n_features)))
+    model.add(Dropout(0.3))
+    model.add(Dense(50, activation="relu"))
+    model.add(Dense(25, activation="relu"))
+    model.add(
+        Dense(n_features, activation="relu")
+    )  # Linear activation for regression tasks
+    custom_optimizer = Adam(learning_rate=0.001)
+    model.compile(
+        optimizer=custom_optimizer, loss=MeanSquaredError(), metrics=["mse", "accuracy"]
+    )
+    return model
+
+def cnn(n_steps, n_features):
+    model = Sequential()
+    model.add(Conv1D(64, kernel_size=3, activation="relu", input_shape=(n_steps, n_features)))
+    model.add(Conv1D(50, kernel_size=3, activation="relu"))
+    model.add(Conv1D(25, kernel_size=3, activation="relu"))
+    model.add(Flatten())
+    model.add(Dense(50, activation="relu"))
+    model.add(Dropout(0.3))
+    model.add(Dense(50, activation="relu"))
+    model.add(Dense(25, activation="relu"))
+    model.add(Dense(n_features, activation="linear"))
+    custom_optimizer = Adam(learning_rate=0.001)
+    model.compile(
+        optimizer=custom_optimizer, loss=MeanSquaredError(), metrics=["mse", "accuracy"]
+    )
+    return model
+
+def gru(n_steps, n_features):
+    model = Sequential()
+    model.add(GRU(50, activation="relu", input_shape=(n_steps, n_features)))
+    model.add(Dense(50, activation="relu"))
+    model.add(Dropout(0.3))
+    model.add(Dense(50, activation="relu"))
+    model.add(Dense(n_features, activation="linear"))
+    custom_optimizer = Adam(learning_rate=0.001)
+    model.compile(
+        optimizer=custom_optimizer, loss=MeanSquaredError(), metrics=["mse", "accuracy"]
+    )
+    return model
+
 
 def build_expense_prediction_model(expenses_df, md="LSTM", X=5, n_steps=3):
     # Assuming 'expenses_df' is your DataFrame containing expenses
@@ -165,7 +209,6 @@ def build_expense_prediction_model(expenses_df, md="LSTM", X=5, n_steps=3):
         freq="M",
     )
     last_month = all_months[-1]
-    #print(last_month, "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     # Initialize an empty list to store monthly totals
     monthly_totals_list = []
 
@@ -195,74 +238,88 @@ def build_expense_prediction_model(expenses_df, md="LSTM", X=5, n_steps=3):
         print(i, ":", month_totals)
 
     data = np.array(monthly_totals_list)
-    #print(monthly_totals_list)
-    # Create sequences for training
-    X_train, y_train = create_sequences(data, n_steps)
-
-    # Normalize data
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    X_train_scaled = scaler.fit_transform(X_train.reshape(-1, 1)).reshape(X_train.shape)
-    y_train_scaled = scaler.transform(y_train.reshape(-1, 1)).reshape(y_train.shape)
-
-    # Assuming n_features is the number of categories
-    n_features = len(categories)
-    # Reshape data for LSTM input (samples, timesteps, features)
-    X_train_reshaped = X_train_scaled.reshape(
-        (X_train_scaled.shape[0], n_steps, n_features)
-    )
-
-    # Ensure that the reshaping is compatible with the LSTM input
-    # The second dimension (n_steps) should match the actual number of past months used for prediction
-    assert X_train_reshaped.shape[1] == n_steps, "Incorrect reshaping dimensions"
-
-    # model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
-
-    if md == "LSTM":
-        model = lstm(n_steps, n_features)
-    elif md == "ANN":
-        # y_train_scaled = y_train_scaled.reshape(-1, 3)
-        model = ann(n_steps, n_features)
-    elif md == "GAN":
-        model = gan(n_steps, n_features)
+    if len(data) <= 12:
+        n_steps = 1
+    elif len(data <= 120):
+        n_steps = 12
     else:
-        raise ValueError(
-            "Invalid model type. Supported types are 'LSTM', 'ANN', and 'GAN'."
+        n_steps = 12
+    # Create sequences for training
+    if len(data) == 1:
+        return -1
+    else:
+        X_train, y_train = create_sequences(data, n_steps)
+
+        # Normalize data
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        X_train_scaled = scaler.fit_transform(X_train.reshape(-1, 1)).reshape(X_train.shape)
+        y_train_scaled = scaler.transform(y_train.reshape(-1, 1)).reshape(y_train.shape)
+
+        # Assuming n_features is the number of categories
+        n_features = len(categories)
+        # Reshape data for LSTM input (samples, timesteps, features)
+        X_train_reshaped = X_train_scaled.reshape(
+            (X_train_scaled.shape[0], n_steps, n_features)
         )
 
-    # Train the model
-    model.fit(X_train_reshaped, y_train_scaled, epochs=5, batch_size=10)
+        # Ensure that the reshaping is compatible with the LSTM input
+        # The second dimension (n_steps) should match the actual number of past months used for prediction
+        assert X_train_reshaped.shape[1] == n_steps, "Incorrect reshaping dimensions"
 
-    # Assuming future_sequence is a 2D numpy array
-    # Initialize future_sequence with the first prediction
-    future_sequence = X_train_reshaped[-1].reshape(1, n_steps, n_features)
-    # print(future_sequence.shape)
-    preds = []
-    # Inside your loop for generating predictions
-    for _ in range(X):
-        # Make the prediction
-        prediction = model.predict(future_sequence)
-        preds.append(
-            scaler.inverse_transform(prediction.reshape(-1, 1)).reshape(
-                prediction.shape
-            )[0]
-        )
-        # Ensure the prediction is a 1D array or a scalar value
+        # model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 
-        # Concatenate the prediction to future_sequence
-        future_sequence = future_sequence.tolist()
-        future_sequence[0].pop(0)
-        future_sequence[0].append(prediction.tolist()[0])
-        future_sequence = np.array(future_sequence)
-        # X_train_reshaped = np.concatenate(X_train_reshaped, future_sequence)
-        X_train_reshaped = X_train_reshaped + future_sequence
-        #print(X_train_reshaped.shape, "+++++++++++++++++++++++++")
+        if md == "LSTM":
+            model = lstm(n_steps, n_features)
+        elif md == "ANN":
+            # y_train_scaled = y_train_scaled.reshape(-1, 3)
+            model = ann(n_steps, n_features)
+        elif md == "GAN":
+            model = gan(n_steps, n_features)
+        elif md == "CNN":
+            model = cnn(n_steps, n_features)
+        elif md == "GRU":
+            model = gru(n_steps, n_features)
+        elif md == "BILSTM":
+            model = bilstm(n_steps, n_features)
+        else:
+            raise ValueError(
+                "Invalid model type."
+            )
+
+        # Train the model
         model.fit(X_train_reshaped, y_train_scaled, epochs=5, batch_size=10)
 
-    return preds, last_month
+        # Assuming future_sequence is a 2D numpy array
+        # Initialize future_sequence with the first prediction
+        future_sequence = X_train_reshaped[-1].reshape(1, n_steps, n_features)
+        # print(future_sequence.shape)
+        preds = []
+        # Inside your loop for generating predictions
+        for _ in range(X):
+            # Make the prediction
+            prediction = model.predict(future_sequence)
+            preds.append(
+                scaler.inverse_transform(prediction.reshape(-1, 1)).reshape(
+                    prediction.shape
+                )[0]
+            )
+            # Ensure the prediction is a 1D array or a scalar value
+
+            # Concatenate the prediction to future_sequence
+            future_sequence = future_sequence.tolist()
+            future_sequence[0].pop(0)
+            future_sequence[0].append(prediction.tolist()[0])
+            future_sequence = np.array(future_sequence)
+            # X_train_reshaped = np.concatenate(X_train_reshaped, future_sequence)
+            X_train_reshaped = X_train_reshaped + future_sequence
+            #print(X_train_reshaped.shape, "+++++++++++++++++++++++++")
+            model.fit(X_train_reshaped, y_train_scaled, epochs=5, batch_size=10)
+
+        return preds, last_month
 
 
 def build_income_prediction_model(incomes_df, md="LSTM", X=5, n_steps=5):
-    # Assuming 'incomes_df' is your DataFrame containing incomes
+    
     incomes_df["date"] = pd.to_datetime(
         incomes_df["date"]
     )  # Convert 'date' column to datetime
@@ -313,6 +370,12 @@ def build_income_prediction_model(incomes_df, md="LSTM", X=5, n_steps=5):
         print(i, ":", month_totals)
 
     data = np.array(monthly_totals_list)
+    if len(data) <= 12:
+        n_steps = 1
+    elif len(data <= 120):
+        n_steps = 12
+    else:
+        n_steps = 12
     #print(monthly_totals_list)
 
     # Create sequences for training
@@ -349,13 +412,21 @@ def build_income_prediction_model(incomes_df, md="LSTM", X=5, n_steps=5):
             model = ann(n_steps, n_features)
         elif md == "GAN":
             model = gan(n_steps, n_features)
+        elif md == "CNN":
+            model = cnn(n_steps, n_features)
+        elif md == "GRU":
+            model = gru(n_steps, n_features)
+        elif md == "BILSTM":
+            model = bilstm(n_steps, n_features)
         else:
             raise ValueError(
-                "Invalid model type. Supported types are 'LSTM', 'ANN', and 'GAN'."
+                "Invalid model type."
             )
 
         # Train the model
         # print(X_train_reshaped.shape, y_train_scaled.shape)
+        #print(n_steps, n_features, ")))()()(()()()()()()()(((((()))))))")
+        #print(X_train_reshaped, "000000000000000000000000000000000000000000000000000000000", y_train_scaled, "|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
         model.fit(X_train_reshaped, y_train_scaled, epochs=5, batch_size=10)
 
         # Assuming future_sequence is a 2D numpy array
@@ -384,8 +455,20 @@ def build_income_prediction_model(incomes_df, md="LSTM", X=5, n_steps=5):
 
         return preds, last_month
 
+def lm_convert(last_month):
+    if isinstance(last_month, list):
+        for i in range(len(last_month)):
+            month = str(last_month[i])[5:7]
+            year = str(last_month[i])[:4]
+            last_month[i] = month + "/" + year
+    else:
+        month = str(last_month)[5:7]
+        year = str(last_month)[:4]
+        last_month = month + "/" + year
+    return last_month
 
-def getPrediction(choice="income", model="LSTM", months=5, lb=5):
+def getPrediction(choice="income", model="LSTM", months=12, lb=1, ifTrain = 'True'):
+    print(choice, model, months, lb, ifTrain)
     
     if isinstance(months, int):
         months = int(months)
@@ -424,6 +507,8 @@ def getPrediction(choice="income", model="LSTM", months=5, lb=5):
         "#FFD700",
         "#8A2BE2",
     ]
+    
+    
 
     try:
         mongo_url = config("MONGO_URL")
@@ -434,58 +519,62 @@ def getPrediction(choice="income", model="LSTM", months=5, lb=5):
         df_income = pd.DataFrame(getIncomes())
         #df_combined = pd.concat([df_income, df_expense])
         
+        if int(months) > 12:
+            return -1, -1
+        
         last_month = ""
-
-        if choice == "income":
-            categories = in_categories
-            preds, last_month = build_income_prediction_model(df_income, model, int(months), int(lb))
-            preds = transpose(preds)
-        elif choice == "expense":
-            categories = ex_categories
-            preds, last_month = build_expense_prediction_model(df_expense, model, int(months), int(lb))
-            preds = transpose(preds)
-        elif choice == "both":
-            preds, last_month_e = build_expense_prediction_model(df_expense, model, int(months), int(lb))
-            preds_e = []
-            for i in range(len(preds)):
-                preds_e.append(sum(preds[i]))
-            preds, last_month_i = build_income_prediction_model(df_income, model, int(months), int(lb))
-            preds_i = []
-            for i in range(len(preds)):
-                preds_i.append(sum(preds[i]))
-            #print(preds_e, preds_i, "+++++++++++++++++++++++++++++++++++++++++")
-            preds = [preds_e, preds_i]
-            #print(last_month_e, last_month_i)
-            last_month = [last_month_e, last_month_i]#last_month_e if last_month_e < last_month_i else last_month_i
-
-        """plt.style.use('dark_background')
-        for i, sublist in enumerate(preds):
-            label = categories[i]
-            # Smooth the line
-            x_smooth, y_smooth = smooth_line(range(len(sublist)), sublist)
-            plt.plot(x_smooth, y_smooth, label=label, color=colors[i])
-            # Display values for each point
-            for j, value in enumerate(sublist):
-                plt.text(j, value, f'{value:.2f}', ha='center', va='bottom', color=colors[i])
-        # Add legend
-        plt.legend()
-        # Show the plot
-        plt.show()"""
-        
-        if isinstance(last_month, list):
-            for i in range(len(last_month)):
-                month = str(last_month[i])[5:7]
-                year = str(last_month[i])[:4]
-                last_month[i] = month + "/" + year
+        if ifTrain == "False":
+            if choice == "income":
+                preds, last_month = build_income_prediction_model(df_income, model, 12, int(lb))
+                last_month = lm_convert(last_month)
+                with open("income.pickle", 'wb') as file:
+                    pickle.dump([preds, last_month], file)
+                preds = transpose(preds[:int(months)])
+            elif choice == "expense":
+                preds, last_month = build_expense_prediction_model(df_expense, model, 12, int(lb))
+                last_month = lm_convert(last_month)
+                with open("expense.pickle", 'wb') as file:
+                    pickle.dump([preds, last_month], file)
+                preds = transpose(preds[:int(months)])
+            elif choice == "both":
+                preds_ex, last_month_e = build_expense_prediction_model(df_expense, model, 12, int(lb))
+                preds_e = []
+                for i in range(len(preds_ex)):
+                    preds_e.append(sum(preds_ex[i]))
+                preds_in, last_month_i = build_income_prediction_model(df_income, model, 12, int(lb))
+                preds_i = []
+                for i in range(len(preds_in)):
+                    preds_i.append(sum(preds_in[i]))
+                preds = [preds_e[:int(months)], preds_i[:int(months)]]
+                last_month = [last_month_e, last_month_i]
+                last_month = lm_convert(last_month)
+            
         else:
-            month = str(last_month)[5:7]
-            year = str(last_month)[:4]
-            last_month = month + "/" + year 
-        
-        print(preds, last_month)
+            if choice == "income":
+                with open("income.pickle", 'rb') as file:
+                    loaded_data = pickle.load(file)
+                    preds = transpose(loaded_data[0])
+                    last_month = loaded_data[1]
+            elif choice == "expense":
+                with open("expense.pickle", 'rb') as file:
+                    loaded_data = pickle.load(file)
+                    preds = transpose(loaded_data[0])
+                    last_month = loaded_data[1]
+            elif choice == "both":
+                preds_ex, last_month_e = build_expense_prediction_model(df_expense, model, 12, int(lb))
+                preds_e = []
+                for i in range(len(preds_ex)):
+                    preds_e.append(sum(preds_ex[i]))
+                preds_in, last_month_i = build_income_prediction_model(df_income, model, 12, int(lb))
+                preds_i = []
+                for i in range(len(preds_in)):
+                    preds_i.append(sum(preds_in[i]))
+                preds = [preds_e[:int(months)], preds_i[:int(months)]]
+                last_month = [last_month_e, last_month_i]
+                last_month = lm_convert(last_month)
+                    
+        print(preds, last_month)    
         return preds, last_month
-        #return {"prediction": preds}, 200
-        #return preds
 
     except ValueError as e:
         return -1, -1

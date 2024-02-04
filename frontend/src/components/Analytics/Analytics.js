@@ -3,6 +3,7 @@ import styled from 'styled-components'
 import AnalyticsChart from '../Chart/AnalyticsChart';
 import { InnerLayout } from '../../styles/layouts';
 import { useGlobalContext } from '../../context/globalContext';
+import Verdict from '../Verdict/Verdict';
 
 function Analytics() {
 
@@ -18,6 +19,7 @@ function Analytics() {
       <AnalyticsStyled>
           <InnerLayout>
               <AnalyticsChart />
+              <Verdict />
           </InnerLayout>
       </AnalyticsStyled>
     )

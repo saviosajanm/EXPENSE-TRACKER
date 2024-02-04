@@ -7,7 +7,7 @@ import Button from '../Button/Button';
 import { plus } from '../../utils/Icons';
 
 function ExpenseForm() {
-  const {addExpense, getExpenses, error, setError} = useGlobalContext()
+  const {addExpense, getExpenses, error, setError, getPrediction, expLen} = useGlobalContext()
   const [inputState, setInputState] = useState({
     title: '',
     amount: '',
@@ -26,6 +26,13 @@ function ExpenseForm() {
   const handleSubmit = e => {
     e.preventDefault()
     addExpense(inputState)
+    getPrediction({
+      choice: 'expense',
+      model: 'LSTM',
+      months: '12',
+      lookback: (expLen - 1).toString(),
+      ifTrain: 'False',
+    })
     setInputState({
       title: '',
       amount: '',
@@ -47,6 +54,7 @@ function ExpenseForm() {
             name={'title'}
             placeholder='Expense Title'
             onChange={handleInput('title')}
+            autocomplete="off"
           />
         </div>
         <div className="input-control">
@@ -56,6 +64,7 @@ function ExpenseForm() {
             name={'amount'}
             placeholder='Expense Amount'
             onChange={handleInput('amount')}
+            autocomplete="off"
           />
         </div>
         <div className="input-control">
@@ -67,6 +76,7 @@ function ExpenseForm() {
             onChange={(date) => {
               setInputState({...inputState, date: date})
             }}
+            autocomplete="off"
           />
         </div>
         <div className="selects input-control">
@@ -83,7 +93,7 @@ function ExpenseForm() {
                 </select>
             </div>
             <div className="input-control">
-                <textarea name="description" value={description} placeholder='Add A Reference' id="description" cols="30" rows="4" onChange={handleInput('description')}></textarea>
+                <textarea name="description" value={description} placeholder='Add A Reference' id="description" cols="30" rows="4" onChange={handleInput('description')} autocomplete="off"></textarea>
             </div>
             <div className="submit-btn">
               <Button 

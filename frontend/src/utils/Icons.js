@@ -31,3 +31,4 @@ export const check = <i class="fa fa-check" aria-hidden="true"></i>
 export const cross = <i class="fa fa-times" aria-hidden="true"></i>
 export const chart = <i class="fa-solid fa-chart-simple"></i>
 export const linechart = <i class="fa-solid fa-chart-line"></i>
+export const search = <i class="fa-solid fa-magnifying-glass"></i>

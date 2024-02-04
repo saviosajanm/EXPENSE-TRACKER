@@ -7,7 +7,7 @@ import Button from '../Button/Button';
 import { plus } from '../../utils/Icons';
 
 function Form() {
-  const {addIncome, getIncomes, error, setError} = useGlobalContext()
+  const {addIncome, getIncomes, error, setError, getPrediction, incLen} = useGlobalContext()
   const [inputState, setInputState] = useState({
     title: '',
     amount: '',
@@ -26,6 +26,13 @@ function Form() {
   const handleSubmit = e => {
     e.preventDefault()
     addIncome(inputState)
+    getPrediction({
+      choice: 'income',
+      model: 'LSTM',
+      months: '12',
+      lookback: (incLen - 1).toString(),
+      ifTrain: 'False',
+    })
     setInputState({
       title: '',
       amount: '',
@@ -47,6 +54,7 @@ function Form() {
             name={'title'}
             placeholder='Salary Title'
             onChange={handleInput('title')}
+            autocomplete="off"
           />
         </div>
         <div className="input-control">
@@ -56,6 +64,7 @@ function Form() {
             name={'amount'}
             placeholder='Salary Amount'
             onChange={handleInput('amount')}
+            autocomplete="off"
           />
         </div>
         <div className="input-control">
@@ -67,6 +76,7 @@ function Form() {
             onChange={(date) => {
               setInputState({...inputState, date: date})
             }}
+            autocomplete="off"
           />
         </div>
         <div className="selects input-control">
@@ -83,7 +93,7 @@ function Form() {
                 </select>
             </div>
             <div className="input-control">
-                <textarea name="description" value={description} placeholder='Add A Reference' id="description" cols="30" rows="4" onChange={handleInput('description')}></textarea>
+                <textarea name="description" value={description} placeholder='Add A Reference' id="description" cols="30" rows="4" onChange={handleInput('description')} autocomplete="off"></textarea>
             </div>
             <div className="submit-btn">
               <Button 

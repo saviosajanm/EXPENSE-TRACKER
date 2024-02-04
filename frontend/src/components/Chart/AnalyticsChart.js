@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import Button from '../Button/Button';
 import { linechart } from '../../utils/Icons';
 import styled from 'styled-components'
+import Slider, { Range } from 'rc-slider';
+import 'rc-slider/assets/index.css';
 import {Chart as ChartJs, 
     CategoryScale,
     LinearScale,
@@ -30,17 +32,98 @@ ChartJs.register(
     ArcElement,
 )
 
+/*
+<div className="selects input-control">
+                            <select required value={model} name="category" id="category" onChange={handleInput('model')}>
+                                <option value=""  disabled >Select Option</option>
+                                <option value="ANN">ANN</option>
+                                <option value="GAN">GAN</option>
+                                <option value="LSTM">LSTM</option> 
+                            </select>
+                        </div>
+<div className="input-control">
+                            <input 
+                                type="text"
+                                value={lback}
+                                name={'lback'}
+                                placeholder='Look Back'
+                                onChange={handleInput('lookback')}
+                            />
+                        </div>
+*/
+
+
 function AnalyticsChart() {
 
-    const {preds, getPrediction, lastm} = useGlobalContext()
+    const {preds, getPrediction, lastm, incLen, expLen} = useGlobalContext()
 
     const [selectedValue, setSelectedValue] = useState("expense");
+
     const [inputState, setInputState] = useState({
         choice: 'expense',
         model: 'LSTM',
-        months: '',
-        lookback: '',
+        months: '12',
+        lookback: '12',
+        ifTrain: 'True',
     })
+
+    function generateDataArray(incomeMonth, expenseMonth, incomeArray, expenseArray, X) {
+        // Convert input months to Date objects
+        const incomeDate = parseMonthYear(incomeMonth);
+        const expenseDate = parseMonthYear(expenseMonth);
+    
+        // Determine the start and end months for the new array
+        const startDate = new Date(Math.min(incomeDate, expenseDate));
+        startDate.setMonth(startDate.getMonth() + 1);
+        const endDate = new Date(Math.max(incomeDate, expenseDate));
+        endDate.setMonth(endDate.getMonth() + X);
+    
+        // Generate the date range
+        const dataArray = [];
+        let currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+            const month = currentDate.getMonth() + 1; // Months are 0-indexed
+            const year = currentDate.getFullYear();
+            dataArray.push(`${month}/${year}`);
+            currentDate.setMonth(currentDate.getMonth() + 1);
+        }
+    
+        // Pad income and expense arrays
+        const paddedIncomeArray = padArray(incomeArray, dataArray.length - incomeArray.length, (incomeDate < expenseDate));
+        const paddedExpenseArray = padArray(expenseArray, dataArray.length - expenseArray.length, (incomeDate > expenseDate));
+    
+        // Log results
+        console.log('Data Array:', dataArray);
+        console.log('Padded Income Array:', paddedIncomeArray);
+        console.log('Padded Expense Array:', paddedExpenseArray);
+    
+        return {
+            dataArray,
+            paddedIncomeArray,
+            paddedExpenseArray
+        };
+    }
+    
+    function parseMonthYear(monthYear) {
+        const [month, year] = monthYear.split('/');
+        return new Date(`${year}-${month}-01`);
+    }
+    
+    function padArray(arr, paddingCount, appendToEnd) {
+        // Clone the original array
+        const paddedArray = arr.slice();
+    
+        // Pad with zeroes
+        for (let i = 0; i < paddingCount; i++) {
+            if (appendToEnd) {
+                paddedArray.push(0);
+            } else {
+                paddedArray.unshift(0);
+            }
+        }
+    
+        return paddedArray;
+    }
 
     function getNextXMonthsFromDate(startDate, numMonths) {
         const result = [];
@@ -58,62 +141,85 @@ function AnalyticsChart() {
         return result;
     }
 
-    function generateData(choice, data) {
-        // Initialize arrays A and B
-        const A = [];
-        const B = [];
-
-        // Create a map to store monthly expenses
-        const monthlydataMap = {};
-
-        // Iterate through expenses and populate monthlyExpensesMap
-        data.forEach(i => {
-            const date = new Date(i.date);
-            const monthYearKey = `${date.getMonth() + 1}/${date.getFullYear()}`;
-
-            if (!monthlydataMap[monthYearKey]) {
-                monthlydataMap[monthYearKey] = Array(8).fill(0);
+    function generateBothChartData() {
+        const {
+          dataArray,
+          paddedIncomeArray,
+          paddedExpenseArray
+        } = generateDataArray(lastm[1], lastm[0], preds[1], preds[0], parseInt(inputState.months));
+      
+        // Filter non-zero values along with their x-axis labels
+        const filteredIncomeArray = paddedIncomeArray.reduce((acc, value, index) => {
+          if (value !== 0) {
+            acc.push({
+              x: dataArray[index],
+              y: value
+            });
+          }
+          return acc;
+        }, []);
+      
+        const filteredExpenseArray = paddedExpenseArray.reduce((acc, value, index) => {
+          if (value !== 0) {
+            acc.push({
+              x: dataArray[index],
+              y: value
+            });
+          }
+          return acc;
+        }, []);
+      
+        const data = {
+          labels: dataArray,
+          datasets: [
+            {
+              label: "Expense",
+              data: filteredExpenseArray,
+              backgroundColor: '#FD0000',
+              borderColor: '#FD0000',
+              tension: 0.2,
+              showLine: true, // Hide the line connecting points
+              pointRadius: 4, // Increase the point size for better visibility
+            },
+            {
+              label: "Income",
+              data: filteredIncomeArray,
+              backgroundColor: '#00a23c',
+              borderColor: '#00a23c',
+              tension: 0.2,
+              showLine: true, // Hide the line connecting points
+              pointRadius: 4, // Increase the point size for better visibility
             }
-
-            if (choice === "income") {
-                var categoryIndex = [
-                    "salary", "freelancing", "investments", "stocks", "bitcoin", "bank", "youtube", "other",
-                ].indexOf(i.category.toLowerCase());
-            } else
-            if (choice === "expense") {
-                var categoryIndex = [
-                    'education', 'groceries', 'health', 'subscriptions', 'takeaways', 'clothing', 'travelling', 'other'
-                ].indexOf(i.category.toLowerCase());
+          ]
+        };
+      
+        const options = {
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: 'Next ' + inputState.months + " Months"
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: "Prediction for both"
+              }
             }
-
-
-            if (categoryIndex !== -1) {
-                monthlydataMap[monthYearKey][categoryIndex] += i.amount;
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: "Predicted Incomes and expenses for the next " + inputState.months + " months"
             }
-        });
-
-        // Get the start and end months
-        const startDate = new Date(data[0].date);
-        const endDate = new Date(data[data.length - 1].date);
-
-        // Populate arrays A and B for continuous months
-        for (let currentMonth = new Date(startDate); currentMonth <= endDate; currentMonth.setMonth(currentMonth.getMonth() + 1)) {
-        const monthYearKey = `${currentMonth.getMonth() + 1}/${currentMonth.getFullYear()}`;
-
-        if (!monthlydataMap[monthYearKey]) {
-            A.push(Array(8).fill(0));
-            B.push(monthYearKey);
-        } else {
-            A.push(monthlydataMap[monthYearKey]);
-            B.push(monthYearKey);
-        }
-        }
-        let X = A[0].map((_, colIndex) => A.map(row => row[colIndex]));
-        // Display the results
-        console.log("Array A:", X);
-        console.log("Array B:", B);
-        return {"amount":X, "months":B}
-    }
+          }
+        };
+      
+        return {"data" : data, "options": options};
+      }
+      
+    
 
     const ex_cat = [
         "Education",
@@ -243,9 +349,13 @@ function AnalyticsChart() {
 
     let data = null;
     if (preds != -1) {
-        data = generateChartData(); // Replace with your actual function to generate chart data
+        if (inputState.choice !== "both"){
+            data = generateChartData(); // Replace with your actual function to generate chart data
+        } else {
+            
+            data = generateBothChartData();
+        }
     }
-    //console.log(preds, "-----------++++++++++++++++++++");
 
     
 
@@ -272,7 +382,9 @@ function AnalyticsChart() {
         console.log(preds); 
     }
 
-    
+    const OnChangeEventTriggerd = (value) => {
+        setInputState({...inputState, "months": value})
+    };
 
     return (
         <InnerLayout>
@@ -292,7 +404,7 @@ function AnalyticsChart() {
                         textAlign: 'center',
                         padding: "0px 100px"
                         }}>
-                        Generate the predictions chart or check for faulty parameters that might not work with the chosen model and/or data
+                        Generate the predictions chart or check if the number of months is at max 12
                     </AnalyticsChartStyled>
                 )}
                 <OptionStyled>
@@ -337,14 +449,7 @@ function AnalyticsChart() {
                         </div>
                     </div>
                     <FormStyled>
-                        <div className="selects input-control">
-                            <select required value={model} name="category" id="category" onChange={handleInput('model')}>
-                                <option value=""  disabled >Select Option</option>
-                                <option value="ANN">ANN</option>
-                                <option value="GAN">GAN</option>
-                                <option value="LSTM">LSTM</option> 
-                            </select>
-                        </div>
+                        
                         <div className="input-control">
                             <input 
                                 type="text"
@@ -354,15 +459,19 @@ function AnalyticsChart() {
                                 onChange={handleInput('months')}
                             />
                         </div>
-                        <div className="input-control">
-                            <input 
-                                type="text"
-                                value={lback}
-                                name={'lback'}
-                                placeholder='Look Back'
-                                onChange={handleInput('lookback')}
+                        <div style={containerStyle}>
+                            <Slider
+                                value={inputState.months}
+                                step={1}
+                                min={0}
+                                max={12}
+                                onChange={OnChangeEventTriggerd}
+                                handleStyle={handleStyle}
+                                railStyle={railStyle}
+                                trackStyle={trackStyle}
                             />
                         </div>
+                        
                         <div className="submit-btn">
                             <Button 
                                 name={'Generate Chart'}
@@ -380,6 +489,25 @@ function AnalyticsChart() {
         </InnerLayout>
     )
 }
+
+const containerStyle = {
+    width: '90%', // Set the desired width for the slider container
+    margin: '0 auto', // Center the container horizontally (optional)
+  };
+
+const handleStyle = {
+    backgroundColor: '#3eb499', // Change the color of the handle
+    borderColor: '#3eb499', // Change the border color of the handle
+    opacity: 1,
+  };
+  
+  const railStyle = {
+    backgroundColor: '#f56692', // Change the color of the rail
+  };
+  
+  const trackStyle = {
+    backgroundColor: '#3eb499', // Change the color of the track
+  };
 
 const Radiostyles = { 
     container: { 
@@ -456,6 +584,7 @@ const FormStyled = styled.form`
             color: rgba(34, 34, 96, 0.4);
         }
     }
+
 
     .selects{
         display: flex;

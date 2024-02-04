@@ -12,6 +12,8 @@ export const GlobalProvider = ({children}) => {
     const [name, setName] = useState("")
     const [preds, setPreds] = useState(-1)
     const [lastm, setLastm] = useState('')
+    const [incLen, setIncLen] = useState(0)
+    const [expLen, setExpLen] = useState(0)
 
     //calculate incomes
 
@@ -26,6 +28,7 @@ export const GlobalProvider = ({children}) => {
     const getIncomes = async () => {
         const response = await axios.get(`${BASE_URL}get-incomes`)
         setIncomes(response.data)
+        setIncLen(response.data.length)
     }
 
     const deleteIncome = async (id) => {
@@ -55,6 +58,7 @@ export const GlobalProvider = ({children}) => {
     const getExpenses = async () => {
         const response = await axios.get(`${BASE_URL}get-expenses`)
         setExpenses(response.data)
+        setExpLen(response.data.length)
         //console.log(response.data)
     }
 
@@ -144,7 +148,9 @@ export const GlobalProvider = ({children}) => {
             name,
             getPrediction,
             preds,
-            lastm
+            lastm,
+            incLen,
+            expLen,
         }}>
             {children}
         </GlobalContext.Provider>

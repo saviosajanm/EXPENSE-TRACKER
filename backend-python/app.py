@@ -71,7 +71,8 @@ def prediction():
     model = data["model"]
     months = data["months"]
     lookback = data["lookback"]
-    result, last_month = getPrediction(choice, model, months, lookback)
+    ifTrain = data["ifTrain"]
+    result, last_month = getPrediction(choice, model, months, lookback, ifTrain)
     #print(type(result), type(last_month), "_________________________________----")
     
     result_json_serializable = convert_to_json_serializable(result)
