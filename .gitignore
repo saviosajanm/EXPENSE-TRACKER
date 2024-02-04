@@ -1,4 +1,7 @@
 backend/node_modules/
+backend/*.env
+backend-python/*.env
+frontend/*.env
 frontend/node_modules/
 *.log
 *.env
