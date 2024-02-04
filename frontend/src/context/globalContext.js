@@ -14,8 +14,18 @@ export const GlobalProvider = ({children}) => {
     const [lastm, setLastm] = useState('')
     const [incLen, setIncLen] = useState(0)
     const [expLen, setExpLen] = useState(0)
+    const [verdict, setVerdict] = useState([])
+    const [incomeVerdict, setIncomeVerdict] = useState("-")
+    const [expenseVerdict, setExpenseVerdict] = useState("-")
+    const [balanceVerdict, setBalanceVerdict] = useState("-")
 
-    //calculate incomes
+    function sumArray(array) {
+        let sum = 0;
+        array.forEach(element => {
+          sum += element;
+        });
+        return sum.toFixed(2);
+    }
 
     const addIncome = async (income) => {
         const response = await axios.post(`${BASE_URL}add-income`, income)
@@ -123,6 +133,25 @@ export const GlobalProvider = ({children}) => {
         setPreds(response.data.prediction)
         setLastm(response.data.last_month)
     }
+
+    const getVerdict = async (pred) => {
+        const response = await axios.post(`${BASE_URL}verdict`, pred)
+            .catch((err) => {
+                setError(err.response.data.message)
+            })
+        console.log(response.data.verdict);
+        setVerdict(response.data.verdict)
+        if (response.data.verdict === -1) {
+            setIncomeVerdict("-")
+            setExpenseVerdict("-")
+            setBalanceVerdict("-")
+        } else {
+            setIncomeVerdict(sumArray(response.data.verdict[1]))
+            setExpenseVerdict(sumArray(response.data.verdict[0]))
+            setBalanceVerdict((sumArray(response.data.verdict[1]) - sumArray(response.data.verdict[0])).toFixed(2))
+        }
+        
+    }
     
     //console.log(totalIncome())
 
@@ -151,6 +180,11 @@ export const GlobalProvider = ({children}) => {
             lastm,
             incLen,
             expLen,
+            getVerdict,
+            verdict,
+            incomeVerdict,
+            expenseVerdict,
+            balanceVerdict
         }}>
             {children}
         </GlobalContext.Provider>

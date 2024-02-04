@@ -7,7 +7,7 @@ import json
 from controllers.expense import addExpense, getExpense, deleteExpense
 from controllers.income import addIncome, getIncomes, deleteIncome
 from controllers.user import updateName, getName, checkIfName
-from model import getPrediction
+from model import getPrediction, getVerdict
 
 app = Flask(__name__)
 CORS(app)
@@ -73,12 +73,8 @@ def prediction():
     lookback = data["lookback"]
     ifTrain = data["ifTrain"]
     result, last_month = getPrediction(choice, model, months, lookback, ifTrain)
-    #print(type(result), type(last_month), "_________________________________----")
-    
     result_json_serializable = convert_to_json_serializable(result)
     last_month_json_serializable = convert_to_json_serializable(last_month)
-    #result = convert_to_list(result)
-    #last_month = convert_to_list(last_month)
     
     response_data = {
         "prediction": result_json_serializable,
@@ -92,6 +88,24 @@ def prediction():
         mimetype="application/json"
     )
 
+    return response
+
+@app.route("/api/v1/verdict", methods=["POST"])
+def verdict():
+    data = request.get_json()
+    saving = data["saving"]
+    model = data["model"]
+    cdate = data["cdate"]
+    result = getVerdict(saving, model, cdate)
+    result_json_serializable = convert_to_json_serializable(result)
+    response_data = {
+        "verdict": result_json_serializable,
+    }
+    response = app.response_class(
+        response = json.dumps(response_data),
+        status=200,
+        mimetype="application/json"
+    )
     return response
 
 if __name__ == "__main__":

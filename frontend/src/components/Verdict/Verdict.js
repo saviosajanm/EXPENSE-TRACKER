@@ -10,23 +10,31 @@ import { dollar } from '../../utils/Icons';
 
 function Verdict() {
 
-    const {preds, getPrediction, lastm, totalExpense, totalIncome, totalBalance} = useGlobalContext()
+    const {getVerdict, verdict, incomeVerdict, expenseVerdict, balanceVerdict} = useGlobalContext()
 
     const [inputState, setInputState] = useState({
         saving: '',
-        date: '',
+        cdate: '',
         model: 'LSTM',
     })
 
     const handleInput = name => e => {
+        //console.log(e.target.value);
         setInputState({...inputState, [name]: e.target.value})
+        console.log(e.target.value);
     }
+
+    const handleDateChange = (selectedDate) => {
+        setInputState({ ...inputState, cdate: selectedDate });
+        console.log(selectedDate);
+      };
 
     const handleSubmit = e => {
         e.preventDefault()
+        getVerdict(inputState)
     }
 
-    const {saving, date, model} = inputState;
+    const {saving, cdate, model} = inputState;
 
     return (
         <InnerLayout>
@@ -35,27 +43,27 @@ function Verdict() {
                 <div className="input-control">
                     <input 
                         type="text"
-                        value={saving}
+                        value={inputState.saving}
                         name={'amount'}
                         placeholder='Salary Amount'
                         onChange={handleInput('saving')}
-                        autocomplete="off"
+                        autoComplete="off"
                     />
                     </div>
                     <div className="input-control">
                     <DatePicker 
                         id='date'
                         placeholderText="Enter A Date"
-                        selected={date}
+                        selected={inputState.cdate}
                         dateFormat="dd/MM/yyyy"
-                        onChange={handleInput('date')}
-                        autocomplete="off"
+                        onChange={handleDateChange}
+                        autoComplete="off"
                     />
                     </div>
                     <div className="submit-btn">
                         <Button 
                             name={'Generate Verdict'}
-                            icon={search}
+                            icon={inputState.search}
                             bPad={'.8rem 1.6rem'}
                             bRad={'30px'}
                             bg={'#0e5093'}
@@ -68,19 +76,19 @@ function Verdict() {
                     <div className="income">
                         <h2>Income</h2>
                         <p>
-                        {dollar} {totalIncome()}
+                        {dollar} {incomeVerdict}
                         </p>
                     </div>
                     <div className="expense">
                         <h2>Expense</h2>
                         <p>
-                        {dollar} {totalExpense()}
+                        {dollar} {expenseVerdict}
                         </p>
                     </div>
                     <div className="balance">
                         <h2>Balance</h2>
                         <p>
-                        {dollar} {totalBalance()}
+                        {dollar} {balanceVerdict}
                         </p>
                     </div>
                 </div>

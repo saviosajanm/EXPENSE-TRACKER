@@ -8,6 +8,8 @@ from keras.losses import MeanSquaredError
 from decouple import config
 from mongoengine import connect
 from pymongo.errors import ConnectionFailure
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import pickle
 
 from controllers.expense import getExpense
@@ -340,7 +342,6 @@ def build_income_prediction_model(incomes_df, md="LSTM", X=5, n_steps=5):
         freq="M",
     )
     last_month = all_months[-1]
-    #print(last_month, "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     # Initialize an empty list to store monthly totals
     monthly_totals_list = []
 
@@ -424,9 +425,6 @@ def build_income_prediction_model(incomes_df, md="LSTM", X=5, n_steps=5):
             )
 
         # Train the model
-        # print(X_train_reshaped.shape, y_train_scaled.shape)
-        #print(n_steps, n_features, ")))()()(()()()()()()()(((((()))))))")
-        #print(X_train_reshaped, "000000000000000000000000000000000000000000000000000000000", y_train_scaled, "|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
         model.fit(X_train_reshaped, y_train_scaled, epochs=5, batch_size=10)
 
         # Assuming future_sequence is a 2D numpy array
@@ -466,6 +464,15 @@ def lm_convert(last_month):
         year = str(last_month)[:4]
         last_month = month + "/" + year
     return last_month
+
+def calculate_month_difference(A, B, x):
+    A_date = datetime.strptime(A, "%m/%Y")
+    B_date = datetime.strptime(B, "%m/%Y")
+    x_date = datetime.strptime(x, "%m/%Y")
+    A_to_x = (x_date.year - A_date.year) * 12 + relativedelta(x_date, A_date).months - 1
+    B_to_x = (x_date.year - B_date.year) * 12 + relativedelta(x_date, B_date).months - 1
+    print(relativedelta(x_date, A_date).months)
+    return A_to_x, B_to_x
 
 def getPrediction(choice="income", model="LSTM", months=12, lb=1, ifTrain = 'True'):
     print(choice, model, months, lb, ifTrain)
@@ -536,18 +543,6 @@ def getPrediction(choice="income", model="LSTM", months=12, lb=1, ifTrain = 'Tru
                 with open("expense.pickle", 'wb') as file:
                     pickle.dump([preds, last_month], file)
                 preds = transpose(preds[:int(months)])
-            elif choice == "both":
-                preds_ex, last_month_e = build_expense_prediction_model(df_expense, model, 12, int(lb))
-                preds_e = []
-                for i in range(len(preds_ex)):
-                    preds_e.append(sum(preds_ex[i]))
-                preds_in, last_month_i = build_income_prediction_model(df_income, model, 12, int(lb))
-                preds_i = []
-                for i in range(len(preds_in)):
-                    preds_i.append(sum(preds_in[i]))
-                preds = [preds_e[:int(months)], preds_i[:int(months)]]
-                last_month = [last_month_e, last_month_i]
-                last_month = lm_convert(last_month)
             
         else:
             if choice == "income":
@@ -584,7 +579,62 @@ def getPrediction(choice="income", model="LSTM", months=12, lb=1, ifTrain = 'Tru
 
     except ConnectionFailure as e:
         print("DB Connection Error:", e)
-        raise e
+        return -1, -1
 
+def getVerdict(saving = 10, model = "LSTM", cdate = ""):
+    
+    try:
+        cdate = lm_convert(cdate)
+        
+        mongo_url = config("MONGO_URL")
+        connect(alias="default", host=mongo_url)
+        print("DB Connection Successful")
+
+        df_expense = pd.DataFrame(getExpense())
+        df_income = pd.DataFrame(getIncomes())
+        #df_combined = pd.concat([df_income, df_expense])
+        
+        df_income["date"] = pd.to_datetime(
+            df_income["date"]
+        )
+        all_months = pd.date_range(
+            start=df_income["date"].min().replace(day=1),
+            end=df_income["date"].max().replace(day=1) + pd.DateOffset(months=1),
+            freq="M",
+        )
+        last_month_i = lm_convert(all_months[-1])
+        
+        df_expense["date"] = pd.to_datetime(
+            df_expense["date"]
+        ) 
+        all_months = pd.date_range(
+            start=df_expense["date"].min().replace(day=1),
+            end=df_expense["date"].max().replace(day=1) + pd.DateOffset(months=1),
+            freq="M",
+        )
+        last_month_e = lm_convert(all_months[-1])
+        
+        m_e, m_i = calculate_month_difference(last_month_e, last_month_i, cdate)
+        if m_e < 0 or m_i < 0:
+            return -1
+        
+        preds_ex, last_month_e = build_expense_prediction_model(df_expense, model, m_e, 1)
+        preds_e = preds_ex[-1]
+        preds_in, last_month_i = build_income_prediction_model(df_income, model, m_i, 1)
+        preds_i = preds_in[-1]
+        preds = [preds_e, preds_i]
+        return preds
+    
+    except ValueError as e:
+        return -1, -1
+        #return {"prediction": -1}, 200
+        #return -1
+        #raise e
+
+    except ConnectionFailure as e:
+        print("DB Connection Error:", e)
+        return -1, -1
+        
+        
 
 #getPrediction("expense", "LSTM", 1, 2)
